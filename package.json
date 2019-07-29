@@ -1,0 +1,14 @@
+{
+  "name": "develatus-apparatus",
+  "version": "0.1.0",
+  "author": "pinkiebell",
+  "license": "MPL-2.0",
+  "bin": {
+    "develatus-apparatus": "bin.js"
+  },
+  "main": "src/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pinkiebell/develatus-apparatus"
+  }
+}
