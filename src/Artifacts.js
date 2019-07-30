@@ -39,7 +39,7 @@ module.exports = class Artifacts {
     const source = obj.source.split('');
     const len = source.length;
     const lineMap = [];
-    let line = 0;
+    let line = 1;
     let column = 0;
 
     for (let i = 0; i < len; i++) {
@@ -71,7 +71,7 @@ module.exports = class Artifacts {
       }
     }
 
-    obj.numberOfLines = line;
+    obj.numberOfLines = line - 1;
     obj.lineMap = lineMap;
   }
 
