@@ -1,5 +1,7 @@
 # develatus-apparatus - Solidity coverage tool 🛠🔬
 
+![develatus-apparatus](https://repository-images.githubusercontent.com/199478599/115de100-b2e9-11e9-8d27-4625885ca29c)
+
 ## How it works
 
 The develatus-apparatus (👏) acts as a RPC proxy between your node and application / integration tests.
