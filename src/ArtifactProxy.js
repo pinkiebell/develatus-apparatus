@@ -128,6 +128,33 @@ module.exports = class ArtifactProxy extends Artifacts {
       }
     }
 
+    if (!contract) {
+      len = this.artifacts.length;
+
+      while (len--) {
+        // try to fuzzy-match the bytecode
+        // some projects modify the bytecode
+        const tmp = this.artifacts[len];
+        const codeLen =
+          tmp.deployedBytecode.length > code.result.length ? code.result.length : tmp.deployedBytecode.length;
+        let matches = 0;
+
+        for (let i = 0; i < codeLen; i++) {
+          if (code.result[i] === tmp.deployedBytecode[i]) {
+            matches++;
+          }
+        }
+
+        if (matches > codeLen * 0.6) {
+          contract = tmp;
+          process.stderr.write(
+            `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${tmp.name}***\n`
+          );
+          break;
+        }
+      }
+    }
+
     if (contract) {
       this.addrToContract[to] = contract;
     }
