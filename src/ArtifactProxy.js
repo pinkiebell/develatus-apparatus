@@ -7,6 +7,7 @@ const urlParse = require('url').parse;
 const Artifacts = require('./Artifacts');
 
 const TRACER = {
+  timeout: '600s',
   tracer:
 `
 {
@@ -14,14 +15,16 @@ const TRACER = {
    fault: function() {
    },
    step: function(log) {
-     var op = log.op.toString();
-     var target = toHex(log.contract.getAddress());
      var pc = log.getPC();
      var depth = log.getDepth();
+     var obj = { pc, depth }
 
-     this.data.push(
-       { pc: pc, depth: depth, target: target, op: op }
-     );
+     if (depth !== this.depth) {
+       this.depth = depth;
+       obj.target = toHex(log.contract.getAddress());
+     }
+
+     this.data.push(obj);
    },
    result: function() { return this.data; }
 }`,
@@ -145,7 +148,7 @@ module.exports = class ArtifactProxy extends Artifacts {
           }
         }
 
-        if (matches > codeLen * 0.6) {
+        if (matches > codeLen * 0.7) {
           contract = tmp;
           process.stderr.write(
             `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${tmp.name}***\n`
@@ -216,7 +219,6 @@ module.exports = class ArtifactProxy extends Artifacts {
       const log = logs[i];
       const pc = log.pc;
       const depth = log.depth;
-      const op = log.op;
 
       let contract = contracts[depth];
 
@@ -230,12 +232,13 @@ module.exports = class ArtifactProxy extends Artifacts {
       }
 
       if (contract) {
-        this.markLocation(contract, pc, op);
+        this.markLocation(contract, pc);
 
-        if (op.startsWith('PUSH')) {
-          const numToPush = parseInt(op.replace('PUSH', ''));
+        const op = contract.bytecode[pc];
+        if (op >= 0x60 && op <= 0x7f) {
+          const numToPush = op - 0x5f;
           for (let x = 1; x <= numToPush; x++) {
-            this.markLocation(contract, pc + x, op);
+            this.markLocation(contract, pc + x);
           }
         }
       }
