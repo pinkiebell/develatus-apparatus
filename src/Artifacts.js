@@ -202,7 +202,7 @@ module.exports = class Artifacts {
     obj.sourceMap = sourceMap;
   }
 
-  markLocation (obj, pc, opcode) {
+  markLocation (obj, pc) {
     obj.visitedLocations[pc] = true;
 
     const sourceMap = obj.sourceMap[pc];
