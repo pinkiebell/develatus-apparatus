@@ -9,19 +9,17 @@ module.exports = class Artifacts {
   add (artifact) {
     const obj = {};
 
-    obj.visitedLocations = {};
     obj.name = artifact.contractName;
     obj.deployedBytecode = artifact.deployedBytecode;
     obj.bytecode = Buffer.from(obj.deployedBytecode.replace('0x', ''), 'hex');
     obj.deployedSourceMap = artifact.deployedSourceMap;
     obj.ast = artifact.ast;
     obj.source = artifact.source;
-    obj.nodes = {};
     obj.fileName = artifact.ast.absolutePath;
     obj.fileId = obj.ast.src.split(':')[2];
 
     this.makeLineMap(obj);
-    this.parseAst(obj);
+    // this.parseAst(obj);
 
     this.contractByFileId[obj.fileId] = obj;
     this.artifacts.push(obj);
@@ -79,17 +77,20 @@ module.exports = class Artifacts {
     // TODO: kind of hacky at the moment.
     // Do it properly 🙃
     let nodes = [].concat(obj.ast.nodes);
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
 
-      if (!node.src) {
+    while (nodes.length) {
+      const node = nodes.pop();
+
+      if (typeof node !== 'object') {
         continue;
+      }
+
+      if (node.src) {
+        obj.nodes[node.src] = node;
       }
       // TODO: handle this
       // if (obj.nodes[node.src]) {
       // }
-
-      obj.nodes[node.src] = node;
 
       for (const k in node) {
         const f = node[k];
@@ -163,24 +164,16 @@ module.exports = class Artifacts {
       const contract = this.contractByFileId[ret.file];
 
       if (contract) {
-        const node = contract.nodes[ret.nodeId];
-        if (
-          node &&
-          node.nodeType !== 'ContractDefinition' &&
-          node.nodeType !== 'FunctionDefinition' &&
-          node.nodeType !== 'WhileStatement' &&
-          node.nodeType !== 'ForStatement' &&
-          !node.trueBody &&
-          !node.falseBody &&
-          ret.jump === '-'
-        ) {
-          skip = false;
+        let source = obj.source;
 
-          // let source = obj.source;
-          // if (obj.fileId !== ret.file) {
-          //  source = this.contractByFileId[ret.file].source;
-          //}
-          // source = source.substring(ret.start, ret.start + ret.length);
+        if (obj.fileId != ret.file) {
+          source = this.contractByFileId[ret.file].source;
+        }
+        source = source.substring(ret.start, ret.start + ret.length);
+
+        // skip if the source-snippet spans across multiple lines
+        if (source.indexOf('\n') === -1) {
+          skip = false;
         }
       }
 
@@ -203,9 +196,8 @@ module.exports = class Artifacts {
   }
 
   markLocation (obj, pc) {
-    obj.visitedLocations[pc] = true;
-
     const sourceMap = obj.sourceMap[pc];
+
     if (sourceMap) {
       sourceMap.visited = true;
     }
@@ -219,7 +211,7 @@ module.exports = class Artifacts {
       let mapLen = artifact.sourceMap.length;
 
       while (mapLen--) {
-        let sourceMap = artifact.sourceMap[mapLen];
+        const sourceMap = artifact.sourceMap[mapLen];
         if (!sourceMap) {
           continue;
         }

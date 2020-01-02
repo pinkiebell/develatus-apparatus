@@ -7,7 +7,7 @@ const urlParse = require('url').parse;
 const Artifacts = require('./Artifacts');
 
 const TRACER = {
-  timeout: '600s',
+  timeout: '1200s',
   tracer:
 `
 {
@@ -17,10 +17,11 @@ const TRACER = {
    step: function(log) {
      var pc = log.getPC();
      var depth = log.getDepth();
-     var obj = { pc, depth }
+     var obj = { pc }
 
      if (depth !== this.depth) {
        this.depth = depth;
+       obj.depth = depth;
        obj.target = toHex(log.contract.getAddress());
      }
 
@@ -42,7 +43,7 @@ module.exports = class ArtifactProxy extends Artifacts {
     this.fetchOptions.headers = { 'Content-Type': 'application/json' };
 
     const server = new http.Server(this.onRequest.bind(this));
-    server.timeout = 90000;
+    //server.timeout = 90000;
     server.listen(options.proxyPort, 'localhost');
   }
 
@@ -63,7 +64,7 @@ module.exports = class ArtifactProxy extends Artifacts {
   async onPost (req, resp, body) {
     const method = body.method;
 
-    if (method === 'eth_sendRawTransaction') {
+    if (method === 'eth_sendRawTransaction' || method === 'eth_sendTransaction') {
       let res = await this.fetch(body);
       let txHash = res.result;
 
@@ -218,7 +219,7 @@ module.exports = class ArtifactProxy extends Artifacts {
     for (let i = 0; i < len; i++) {
       const log = logs[i];
       const pc = log.pc;
-      const depth = log.depth;
+      const depth = log.depth || currentDepth;
 
       let contract = contracts[depth];
 
