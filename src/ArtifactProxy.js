@@ -69,7 +69,12 @@ module.exports = class ArtifactProxy extends Artifacts {
       let txHash = res.result;
 
       if (txHash) {
-        this.doTraceWrapper(txHash);
+        // TODO
+        // this was initially done in async.
+        // but this might kill the node for many and long running traces.
+        // Either use a priority queue (because of state pruning (128 blocks), we might not be able to trace a tx)
+        // or just simply block ;)
+        await this.doTraceWrapper(txHash);
       }
 
       resp.end(JSON.stringify(res));
