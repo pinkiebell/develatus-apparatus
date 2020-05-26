@@ -1,10 +1,10 @@
 'use strict';
 
-const fs = require('fs');
-const resolvePath = require('path').resolve;
-const spawn = require('child_process').spawn;
+import fs from 'fs';
+import { resolve as resolvePath } from 'path';
+import { spawn } from 'child_process';
 
-const ArtifactProxy = require('./ArtifactProxy');
+import ArtifactProxy from './ArtifactProxy.js';
 
 function onException (e) {
   process.stderr.write(`${e.stack || e}\n`);
@@ -70,7 +70,7 @@ function computeCoverage (artifacts) {
   process.on('uncaughtException', onException);
   process.on('unhandledRejection', onException);
 
-  const config = require(resolvePath('.develatus-apparatus.js'));
+  const config = (await import(resolvePath('.develatus-apparatus.js'))).default;
   const path = resolvePath(config.artifactsPath);
   const artifacts = new ArtifactProxy(config);
   const files = fs.readdirSync(path);
@@ -78,7 +78,7 @@ function computeCoverage (artifacts) {
   // XXX: we don't expect directories here, just json build artifacts.
   while (files.length) {
     const file = files.pop();
-    const artifact = require(resolvePath(`${path}/${file}`));
+    const artifact = JSON.parse(fs.readFileSync(resolvePath(`${path}/${file}`)));
 
     artifacts.add(artifact);
   }

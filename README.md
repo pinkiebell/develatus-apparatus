@@ -22,7 +22,7 @@ it reads a configuration file named `.develatus-apparatus.js `.
 Example contents of that file:
 
 ```
-module.exports = {
+export default {
   testCommand: 'yarn mocha --timeout 120000 test/contracts/*.js',
   artifactsPath: 'build/contracts',
   proxyPort: 8333,

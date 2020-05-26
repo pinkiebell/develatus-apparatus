@@ -1,6 +1,6 @@
 'use strict';
 
-module.exports = class Artifacts {
+export default class Artifacts {
   constructor () {
     this.artifacts = [];
     this.contractByFileId = {};

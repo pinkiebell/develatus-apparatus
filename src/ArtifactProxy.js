@@ -1,10 +1,10 @@
 'use strict';
 
-const http = require('http');
-const https = require('https');
-const urlParse = require('url').parse;
+import http from 'http';
+import https from 'https';
+import { parse as urlParse } from 'url';
 
-const Artifacts = require('./Artifacts');
+import Artifacts from './Artifacts.js';
 
 const TRACER = {
   timeout: '1200s',
@@ -31,7 +31,7 @@ const TRACER = {
 }`,
 };
 
-module.exports = class ArtifactProxy extends Artifacts {
+export default class ArtifactProxy extends Artifacts {
   constructor (options) {
     super();
 
