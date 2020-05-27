@@ -139,6 +139,7 @@ export default class ArtifactProxy extends Artifacts {
 
     if (!contract) {
       len = this.artifacts.length;
+      let bestMatch = 0;
 
       while (len--) {
         // try to fuzzy-match the bytecode
@@ -154,13 +155,20 @@ export default class ArtifactProxy extends Artifacts {
           }
         }
 
-        if (matches > codeLen * 0.7) {
+        if (matches > codeLen * 0.7 && matches > bestMatch) {
+          bestMatch = matches;
           contract = tmp;
-          process.stderr.write(
-            `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${tmp.name}***\n`
-          );
-          break;
         }
+      }
+
+      if (contract) {
+        process.stderr.write(
+          `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${contract.name}***\n`
+        );
+      } else {
+        process.stderr.write(
+          `***develatus-apparatus: (Warning) No artifact found for contract at ${to}***\n`
+        );
       }
     }
 
