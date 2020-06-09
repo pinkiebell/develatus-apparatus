@@ -35,6 +35,7 @@ export default class ArtifactProxy extends Artifacts {
   constructor (options) {
     super();
 
+    this.fuzzyMatchFactor = options.fuzzyMatchFactor || 0.7;
     this.addrToContract = {};
     this.pendingTraces = 0;
 
@@ -149,13 +150,13 @@ export default class ArtifactProxy extends Artifacts {
           tmp.deployedBytecode.length > code.result.length ? code.result.length : tmp.deployedBytecode.length;
         let matches = 0;
 
-        for (let i = 0; i < codeLen; i++) {
+        for (let i = 2; i < codeLen; i++) {
           if (code.result[i] === tmp.deployedBytecode[i]) {
             matches++;
           }
         }
 
-        if (matches > codeLen * 0.7 && matches > bestMatch) {
+        if (matches >= (codeLen * this.fuzzyMatchFactor) && matches > bestMatch) {
           bestMatch = matches;
           contract = tmp;
         }
