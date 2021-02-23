@@ -5,13 +5,13 @@
 ## How it works
 
 The develatus-apparatus (👏) acts as a RPC proxy between your node and application / integration tests.
-It intercepts `eth_sendRawTransaction` calls and uses `debug_traceTransaction` to create
+It intercepts `eth_call`, `eth_sendTransaction` and `eth_sendRawTransaction` calls and uses `debug_trace{Transaction||Call}` to create
 a coverage report for Contracts it derives from your build artifacts.
 
 ### Notes
 
-- Tested with geth v1.8.21.
-- Uses the `debug_traceTransaction` - JavaScript Tracer
+- Tested with geth v1.9.25.
+- Uses the `debug_trace{Transaction||Call}` - JavaScript Tracer
 - You may have to enable the debug-rpc api. Like `--rpcapi=eth,net,web3,debug`
 
 ## How to use

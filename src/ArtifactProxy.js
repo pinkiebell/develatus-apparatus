@@ -65,24 +65,24 @@ export default class ArtifactProxy extends Artifacts {
   async onPost (req, resp, body) {
     const method = body.method;
 
-    if (method === 'eth_sendRawTransaction' || method === 'eth_sendTransaction') {
-      let res = await this.fetch(body);
-      let txHash = res.result;
+    if (method === 'eth_sendRawTransaction' || method === 'eth_sendTransaction' || method === 'eth_call') {
+      const res = await this.fetch(body);
+      const txHashOrCallObject = method === 'eth_call' ? body.params : res.result;
 
-      if (txHash) {
+      if (txHashOrCallObject) {
         // TODO
         // this was initially done in async.
         // but this might kill the node for many and long running traces.
         // Either use a priority queue (because of state pruning (128 blocks), we might not be able to trace a tx)
         // or just simply block ;)
-        await this.doTraceWrapper(txHash);
+        await this.doTraceWrapper(txHashOrCallObject);
       }
 
       resp.end(JSON.stringify(res));
       return;
     }
 
-    let res = await this.fetch(body);
+    const res = await this.fetch(body);
     resp.end(JSON.stringify(res));
   }
 
@@ -117,6 +117,7 @@ export default class ArtifactProxy extends Artifacts {
       return;
     }
 
+    to = to.toLowerCase();
     let contract = this.addrToContract[to];
 
     if (contract) {
@@ -180,43 +181,57 @@ export default class ArtifactProxy extends Artifacts {
   }
 
   // https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/internal/tracers/call_tracer.js
-  async doTrace (txHash) {
-    if (!txHash) {
+  async doTrace (txHashOrCallObject) {
+    if (!txHashOrCallObject) {
       return;
     }
 
     let receipt;
-    for (let i = 0; i < 100; i++) {
-      const obj = await this.fetch(
+    let trace;
+
+    if (typeof txHashOrCallObject === 'string') {
+      for (let i = 0; i < 100; i++) {
+        const obj = await this.fetch(
+          {
+            jsonrpc: '2.0',
+            id: 42,
+            method: 'eth_getTransactionReceipt',
+            params: [txHashOrCallObject],
+          }
+        );
+
+        if (obj.result) {
+          receipt = obj.result;
+          break;
+        }
+
+        await new Promise(function (resolve) { setTimeout(resolve, 30 ); });
+      }
+
+      if (!receipt.to) {
+        // ignoring deployment
+        return;
+      }
+
+      trace = await this.fetch(
         {
           jsonrpc: '2.0',
           id: 42,
-          method: 'eth_getTransactionReceipt',
-          params: [txHash],
+          method: 'debug_traceTransaction',
+          params: [txHashOrCallObject, TRACER],
         }
       );
-
-      if (obj.result) {
-        receipt = obj.result;
-        break;
-      }
-
-      await new Promise(function (resolve) { setTimeout(resolve, 30 ); });
+    } else {
+      receipt = txHashOrCallObject[0];
+      trace = await this.fetch(
+        {
+          jsonrpc: '2.0',
+          id: 42,
+          method: 'debug_traceCall',
+          params: [...txHashOrCallObject, TRACER],
+        }
+      );
     }
-
-    if (!receipt.to) {
-      // ignoring deployment
-      return;
-    }
-
-    let trace = await this.fetch(
-      {
-        jsonrpc: '2.0',
-        id: 42,
-        method: 'debug_traceTransaction',
-        params: [txHash, TRACER],
-      }
-    );
 
     if (!trace.result) {
       process.stderr.write(
@@ -260,10 +275,10 @@ export default class ArtifactProxy extends Artifacts {
     }
   }
 
-  async doTraceWrapper (txHash) {
+  async doTraceWrapper (txHashOrCallObject) {
     this.pendingTraces++;
     try {
-      await this.doTrace(txHash);
+      await this.doTrace(txHashOrCallObject);
     } finally {
       this.pendingTraces--;
     }
