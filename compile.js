@@ -2,9 +2,33 @@
 
 import fs from 'fs';
 import { createHash } from 'crypto';
+import { resolve as resolvePath } from 'path';
 
 import solc from 'solc';
 
+const DEFAULT_SETTINGS = {
+  evmVersion: 'istanbul',
+  outputSelection: {
+    '*': {
+      '': [
+        'ast',
+      ],
+      '*': [
+        'abi',
+        'metadata',
+        'evm.bytecode.object',
+        'evm.bytecode.sourceMap',
+        'evm.deployedBytecode.object',
+        'evm.deployedBytecode.sourceMap',
+        'userdoc',
+        'devdoc',
+      ],
+    },
+  },
+};
+
+const config = (await import(resolvePath('.develatus-apparatus.js'))).default;
+const solcSettings = Object.assign(DEFAULT_SETTINGS, config.solcSettings || {});
 const sources = {};
 let outputDir = '';
 
@@ -15,69 +39,32 @@ for (const dir of ['build/', 'contracts']) {
   }
 }
 
-const sha256 = createHash('sha256');
 for (let i = 2; i < process.argv.length; i++) {
   const path = process.argv[i];
   const source = fs.readFileSync(path).toString();
 
   sources[path] = { content: source };
-  sha256.update(source);
   process.stdout.write(`> Compiling ${path}\n`);
 }
 
+const compilerInput = {
+  language: 'Solidity',
+  sources: sources,
+  settings: solcSettings,
+};
+const standardJson = JSON.stringify(compilerInput);
+const hashBuf = createHash('sha256').update(standardJson).digest();
 const hashFile = 'build/.hash';
-const hashBuf = sha256.digest();
 try {
   const buf = fs.readFileSync(hashFile);
 
-  if (!process.env.DUMP_INPUT && buf.equals(hashBuf)) {
+  if (buf.equals(hashBuf)) {
     process.stdout.write('No changes. Not compiling\n');
     process.exit(0);
   }
 } catch (e) {
   // ignore
 }
-
-const compilerInput = {
-  language: 'Solidity',
-  sources: sources,
-  settings: {
-    evmVersion: 'istanbul',
-    optimizer: {
-      enabled: true,
-      runs: 2,
-      details: {
-        peephole: true,
-        jumpdestRemover: true,
-        orderLiterals: false,
-        deduplicate: true,
-        cse: true,
-        constantOptimizer: true,
-        yul: false,
-      },
-    },
-    metadata: {
-      'bytecodeHash': 'none',
-    },
-    outputSelection: {
-      '*': {
-        '': [
-          'ast',
-        ],
-        '*': [
-          'abi',
-          'metadata',
-          'evm.bytecode.object',
-          'evm.bytecode.sourceMap',
-          'evm.deployedBytecode.object',
-          'evm.deployedBytecode.sourceMap',
-          'userdoc',
-          'devdoc',
-        ],
-      },
-    },
-  },
-};
 
 function importCallback (path) {
   let realPath = path;
@@ -94,7 +81,6 @@ function importCallback (path) {
   return { contents: source };
 }
 
-const standardJson = JSON.stringify(compilerInput);
 const output = JSON.parse(solc.compile(standardJson, { import: importCallback }));
 
 if (output.errors) {
@@ -141,8 +127,6 @@ for (const file in output.contracts) {
 
 process.stdout.write(`> Compiled successfully using solc ${solc.version()}\n`);
 fs.writeFileSync(hashFile, hashBuf);
-if (process.env.DUMP_INPUT) {
-  const path = `./build/${process.env.DUMP_INPUT}`;
-  fs.writeFileSync(path, standardJson);
-  process.stdout.write(`> Written compiler input to ${path}\n`);
-}
+const path = `./build/solc-input.json`;
+fs.writeFileSync(path, standardJson);
+process.stdout.write(`> Written compiler input to ${path}\n`);
