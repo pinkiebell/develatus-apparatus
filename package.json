@@ -6,7 +6,8 @@
   "type": "module",
   "bin": {
     "develatus-apparatus": "bin.js",
-    "develatus-apparatus-compile": "compile.js"
+    "develatus-apparatus-compile": "tools/compile.js",
+    "develatus-apparatus-parse": "tools/parseCoverage.js"
   },
   "main": "src/index.js",
   "repository": {
