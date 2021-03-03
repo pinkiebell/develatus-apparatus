@@ -4,8 +4,6 @@ import fs from 'fs';
 import { createHash } from 'crypto';
 import { resolve as resolvePath } from 'path';
 
-import solc from 'solc';
-
 const DEFAULT_SETTINGS = {
   evmVersion: 'istanbul',
   outputSelection: {
@@ -81,6 +79,7 @@ function importCallback (path) {
   return { contents: source };
 }
 
+const solc = (await import('solc')).default;
 const output = JSON.parse(solc.compile(standardJson, { import: importCallback }));
 
 if (output.errors) {
