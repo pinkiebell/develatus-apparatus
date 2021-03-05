@@ -234,12 +234,16 @@ export default class ArtifactProxy extends Artifacts {
       );
     } else {
       receipt = txHashOrCallObject[0];
+      const params = [...txHashOrCallObject];
+      if (params.length !== 2) {
+        params.push('latest');
+      }
       trace = await this.fetch(
         {
           jsonrpc: '2.0',
           id: 42,
           method: 'debug_traceCall',
-          params: [...txHashOrCallObject, TRACER],
+          params: [...params, TRACER],
         }
       );
     }
