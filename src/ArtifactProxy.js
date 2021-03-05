@@ -63,11 +63,22 @@ export default class ArtifactProxy extends Artifacts {
   }
 
   async onPost (req, resp, body) {
+    resp.setHeader('content-type', 'application/json');
     const method = body.method;
 
-    if (method === 'eth_sendRawTransaction' || method === 'eth_sendTransaction' || method === 'eth_call') {
+    if (
+      method === 'eth_sendRawTransaction'
+      || method === 'eth_sendTransaction'
+      || method === 'eth_call'
+      || method === 'eth_estimateGas'
+    ) {
       const res = await this.fetch(body);
-      const txHashOrCallObject = method === 'eth_call' ? body.params : res.result;
+      let txHashOrCallObject;
+      if (method === 'eth_estimateGas' || method === 'eth_call') {
+        txHashOrCallObject = body.params;
+      } else {
+        txHashOrCallObject = res.result;
+      }
 
       if (txHashOrCallObject) {
         // TODO
