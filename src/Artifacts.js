@@ -226,6 +226,9 @@ export default class Artifacts {
 
         for (let x = start; x < end; x++) {
           const obj = contract.lineMap[x];
+          if (!obj) {
+            continue;
+          }
 
           if (sourceMap.visited) {
             obj.hit = 1;

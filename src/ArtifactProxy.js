@@ -14,15 +14,18 @@ const TRACER = {
    data: [],
    fault: function() {
    },
+   target: '',
    step: function(log) {
      var pc = log.getPC();
      var depth = log.getDepth();
      var obj = { pc }
-
+     if (log.op.toString().indexOf('CALL') !== -1) {
+       this.target = toHex(toAddress(log.stack.peek(1).toString(16)));
+     }
      if (depth !== this.depth) {
        this.depth = depth;
        obj.depth = depth;
-       obj.target = toHex(log.contract.getAddress());
+       obj.target = this.target;
      }
 
      this.data.push(obj);
