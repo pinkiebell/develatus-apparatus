@@ -17,12 +17,20 @@ function computeCoverage (artifacts) {
     },
   };
   const contracts = artifacts.artifacts;
+  // http://ltp.sourceforge.net/coverage/lcov/geninfo.1.php
+  let lcov = '';
 
   for (let i = 0; i < contracts.length; i++) {
     const contract = contracts[i];
     const cover = {};
     let hits = 0;
     let miss = 0;
+    let path = contract.fileName;
+
+    if (!fs.existsSync(path)) {
+      path = 'node_modules/' + path;
+    }
+    lcov += `SF:${path}\n`;
 
     for (let key in contract.lineMap) {
       const val = contract.lineMap[key];
@@ -36,17 +44,20 @@ function computeCoverage (artifacts) {
           }
           cover[val.line] = 1;
           hits += 1;
+          lcov += `DA:${val.line},${val.hit}\n`;
         }
       } else if (ignore) {
         // ignoring for now
       } else {
         if (cover[val.line] === undefined) {
           cover[val.line] = 0;
+          lcov += `DA:${val.line},0\n`;
           miss += 1;
         }
       }
     }
     coverage.coverage[contract.fileName] = cover;
+    lcov += `LH:${hits}\nLF:${hits + miss}\nend_of_record\n`;
 
     const totalLines = contract.numberOfLines;
     const covered = ((totalLines - miss) / totalLines) * 100;
@@ -61,9 +72,11 @@ function computeCoverage (artifacts) {
   }
 
   const path = resolvePath('./coverage-report.json');
+  const lcovPath = resolvePath('./coverage-report.lcov');
 
   fs.writeFileSync(path, JSON.stringify(coverage));
-  process.stdout.write(`Written to ${path}\n`);
+  fs.writeFileSync(lcovPath, lcov);
+  process.stdout.write(`Written to ${path}, ${lcovPath}\n`);
 }
 
 (async function () {
