@@ -22,22 +22,26 @@ function computeCoverage (artifacts, config) {
 
   for (let i = 0; i < contracts.length; i++) {
     const contract = contracts[i];
+    let path = contract.fileName;
 
-    if (config.ignore && contract.fileName.match(config.ignore)) {
-      process.stdout.write(`ignoring ${contract.fileName}\n`);
+    if (!fs.existsSync(path)) {
+      const maybeMatch = 'node_modules/' + path;
+
+      if (fs.existsSync(path)) {
+        path = maybeMatch;
+      }
+    }
+
+    if (config.ignore && path.match(config.ignore)) {
+      process.stdout.write(`ignoring ${path}\n`);
       continue;
     }
 
     const cover = {};
     let hits = 0;
     let miss = 0;
-    let path = contract.fileName;
 
-    if (!fs.existsSync(path)) {
-      path = 'node_modules/' + path;
-    }
     lcov += `SF:${path}\n`;
-
     for (let key in contract.lineMap) {
       const val = contract.lineMap[key];
       const ignore = (val.hit === 0 && val.miss === 0);
@@ -62,7 +66,7 @@ function computeCoverage (artifacts, config) {
         }
       }
     }
-    coverage.coverage[contract.fileName] = cover;
+    coverage.coverage[path] = cover;
     lcov += `LH:${hits}\nLF:${hits + miss}\nend_of_record\n`;
 
     const totalLines = contract.numberOfLines;
