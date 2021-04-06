@@ -28,6 +28,7 @@ export default {
   proxyPort: 8333,
   rpcUrl: 'http://localhost:8222',
   fuzzyMatchFactor: 0.8,
+  ignore: /(mocks|test)\/.*\.sol/,
   solcSettings: {
     evmVersion: 'istanbul',
     optimizer: {

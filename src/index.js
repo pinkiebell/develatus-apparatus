@@ -11,7 +11,7 @@ function onException (e) {
   process.exit(1);
 }
 
-function computeCoverage (artifacts) {
+function computeCoverage (artifacts, config) {
   const coverage = {
     coverage: {
     },
@@ -22,6 +22,12 @@ function computeCoverage (artifacts) {
 
   for (let i = 0; i < contracts.length; i++) {
     const contract = contracts[i];
+
+    if (config.ignore && contract.fileName.match(config.ignore)) {
+      process.stdout.write(`ignoring ${contract.fileName}\n`);
+      continue;
+    }
+
     const cover = {};
     let hits = 0;
     let miss = 0;
@@ -110,6 +116,6 @@ function computeCoverage (artifacts) {
   );
 
   await artifacts.finish();
-  computeCoverage(artifacts);
+  computeCoverage(artifacts, config);
   process.exit(exitCode);
 })();
