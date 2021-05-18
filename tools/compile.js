@@ -45,9 +45,10 @@ for (let i = 2; i < process.argv.length; i++) {
   process.stdout.write(`> Compiling ${path}\n`);
 }
 
+const language = 'Solidity';
 const compilerInput = {
-  language: 'Solidity',
-  sources: sources,
+  language,
+  sources,
   settings: solcSettings,
 };
 const standardJson = JSON.stringify(compilerInput);
@@ -121,11 +122,24 @@ for (const file in output.contracts) {
 
     fs.writeFileSync(artifactPath, JSON.stringify(obj, null, 2));
     process.stdout.write(`> Artifact for ${contractName} written to ${artifactPath}\n`);
+
+    {
+      const meta = JSON.parse(obj.metadata);
+      const inputSources = {};
+      for (const file in meta.sources) {
+        inputSources[file] = sources[file];
+      }
+      const compilerInput = {
+        language: meta.language,
+        settings: meta.settings,
+        sources: inputSources,
+      };
+      const solcInputPath = `./build/solc-input-${contractName}.json`;
+      fs.writeFileSync(solcInputPath, JSON.stringify(compilerInput, null, 2));
+      process.stdout.write(`> Written compiler input to ${solcInputPath}\n`);
+    }
   }
 }
 
-process.stdout.write(`> Compiled successfully using solc ${solc.version()}\n`);
 fs.writeFileSync(hashFile, hashBuf);
-const path = `./build/solc-input.json`;
-fs.writeFileSync(path, standardJson);
-process.stdout.write(`> Written compiler input to ${path}\n`);
+process.stdout.write(`> Compiled successfully using solc ${solc.version()}\n`);
