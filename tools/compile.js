@@ -129,9 +129,13 @@ for (const file in output.contracts) {
       for (const file in meta.sources) {
         inputSources[file] = sources[file];
       }
+      const settings = {};
+      for (const key of ['evmVersion', 'libraries', 'metadata', 'optimizer', 'remappings']) {
+        settings[key] = meta.settings[key];
+      }
       const compilerInput = {
         language: meta.language,
-        settings: meta.settings,
+        settings,
         sources: inputSources,
       };
       const solcInputPath = `./build/solc-input-${contractName}.json`;
