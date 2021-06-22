@@ -238,7 +238,7 @@ export default class ArtifactProxy extends Artifacts {
     } else {
       receipt = txHashOrCallObject[0];
       const params = [...txHashOrCallObject];
-      if (params.length !== 2) {
+      if (params.length < 2) {
         params.push('latest');
       }
       trace = await this.fetch(
