@@ -147,3 +147,4 @@ for (const file in output.contracts) {
 
 fs.writeFileSync(hashFile, hashBuf);
 process.stdout.write(`> Compiled successfully using solc ${solc.version()}\n`);
+process.exit(0);
