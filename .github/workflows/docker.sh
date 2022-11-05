@@ -10,6 +10,7 @@ fi
 
 BUILDER=mybuilder
 docker buildx create --bootstrap --name $BUILDER --platform $PLATFORM --use || echo 'skip'
+docker buildx inspect
 
 path=$(dirname $DOCKERFILE)
 ext=${path##*/}
