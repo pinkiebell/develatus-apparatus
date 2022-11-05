@@ -116,6 +116,23 @@ export default class ArtifactProxy extends Artifacts {
       let txHashOrCallObject;
       if (method === 'eth_estimateGas' || method === 'eth_call' || method === 'debug_traceCall') {
         txHashOrCallObject = body.params;
+        let blockTag = txHashOrCallObject[1] || 'latest';
+        if (Number.isNaN(Number(blockTag))) {
+          // keep a correct 'anchor' of the block to trace against
+          const obj = await this.fetch(
+            {
+              jsonrpc: '2.0',
+              id: 42,
+              method: 'eth_getHeaderByNumber',
+              params: [blockTag],
+            }
+          );
+
+          if (obj && obj.result) {
+            blockTag = obj.result.number;
+          }
+        }
+        txHashOrCallObject[1] = blockTag;
       } else {
         txHashOrCallObject = res.result;
       }
