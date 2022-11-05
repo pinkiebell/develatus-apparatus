@@ -42,6 +42,7 @@ export default class ArtifactProxy extends Artifacts {
 
     this.fuzzyMatchFactor = options.fuzzyMatchFactor || 0.7;
     this.jobs = [];
+    this.logged = {};
 
     this.fetchOptions = urlParse(options.rpcUrl);
     this.fetchOptions.method = 'POST';
@@ -49,6 +50,7 @@ export default class ArtifactProxy extends Artifacts {
 
     const server = new http.Server(this.onRequest.bind(this));
     //server.timeout = 90000;
+    server.keepAliveTimeout = 0;
     server.listen(options.proxyPort);
     setInterval(this.dutyCycle.bind(this), 30);
   }
@@ -190,11 +192,11 @@ export default class ArtifactProxy extends Artifacts {
       }
 
       if (contract) {
-        process.stderr.write(
+        this.logOnce(
           `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${contract.name}***\n`
         );
       } else {
-        process.stderr.write(
+        this.logOnce(
           `***develatus-apparatus: (Warning) No artifact found for contract at ${to}***\n`
         );
       }
@@ -310,5 +312,12 @@ export default class ArtifactProxy extends Artifacts {
     }
 
     this.finalize();
+  }
+
+  logOnce (str) {
+    if (!this.logged[str]) {
+      process.stderr.write(str);
+      this.logged[str] = true;
+    }
   }
 };
