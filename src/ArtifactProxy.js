@@ -5,6 +5,7 @@ import https from 'https';
 import { parse as urlParse } from 'url';
 
 import Artifacts from './Artifacts.js';
+import computeCoverage from './coverage.js';
 
 const TRACER = {
   timeout: '1200s',
@@ -14,18 +15,19 @@ const TRACER = {
    data: [],
    fault: function() {
    },
-   target: '',
-   step: function(log) {
+   step: function(log, db) {
      var pc = log.getPC();
      var depth = log.getDepth();
-     var obj = { pc }
-     if (log.op.toString().indexOf('CALL') !== -1) {
-       this.target = toHex(toAddress(log.stack.peek(1).toString(16)));
+     var obj = { pc };
+     var op = log.op.toNumber();
+     if (op === 0xf1 || op === 0xf2 || op === 0xf4 || op === 0xfa) {
+       this.target = toAddress(log.stack.peek(1).toString(16));
      }
      if (depth !== this.depth) {
        this.depth = depth;
        obj.depth = depth;
-       obj.target = this.target;
+       obj.target = toHex(this.target || log.contract.getAddress());
+       obj.code = toHex(db.getCode(this.target || log.contract.getAddress()));
      }
 
      this.data.push(obj);
@@ -36,11 +38,10 @@ const TRACER = {
 
 export default class ArtifactProxy extends Artifacts {
   constructor (options) {
-    super();
+    super(options);
 
     this.fuzzyMatchFactor = options.fuzzyMatchFactor || 0.7;
-    this.addrToContract = {};
-    this.pendingTraces = 0;
+    this.jobs = [];
 
     this.fetchOptions = urlParse(options.rpcUrl);
     this.fetchOptions.method = 'POST';
@@ -48,20 +49,53 @@ export default class ArtifactProxy extends Artifacts {
 
     const server = new http.Server(this.onRequest.bind(this));
     //server.timeout = 90000;
-    server.listen(options.proxyPort, 'localhost');
+    server.listen(options.proxyPort);
+    setInterval(this.dutyCycle.bind(this), 30);
   }
 
-  onRequest (req, res) {
-    let body = Buffer.alloc(0);
+  async dutyCycle () {
+    const job = this.jobs.shift();
+    if (job) {
+      await this.doTrace(...job);
+    }
+  }
+
+  async onRequest (req, resp) {
     const self = this;
 
     if (req.method === 'POST') {
+      let body = Buffer.alloc(0);
       req.on('data', function (buf) {
         body = Buffer.concat([body, buf]);
       });
       req.on('end', function () {
-        self.onPost(req, res, JSON.parse(body.toString()));
+        self.onPost(req, resp, JSON.parse(body.toString()));
       });
+      return;
+    }
+
+    if (req.method === 'GET') {
+      if (req.url === '/reload') {
+        await this.reload();
+        resp.end();
+        return;
+      }
+      if (req.url === '/.json') {
+        await this.finish();
+        const { json } = computeCoverage(this, this.config);
+        resp.end(JSON.stringify(json));
+        return;
+      }
+      if (req.url === '/.lcov') {
+        await this.finish();
+        const { lcov } = computeCoverage(this, this.config);
+        resp.end(lcov);
+        return;
+      }
+
+      resp.statusCode = 404;
+      resp.end();
+      return;
     }
   }
 
@@ -74,22 +108,18 @@ export default class ArtifactProxy extends Artifacts {
       || method === 'eth_sendTransaction'
       || method === 'eth_call'
       || method === 'eth_estimateGas'
+      || method === 'debug_traceCall'
     ) {
       const res = await this.fetch(body);
       let txHashOrCallObject;
-      if (method === 'eth_estimateGas' || method === 'eth_call') {
+      if (method === 'eth_estimateGas' || method === 'eth_call' || method === 'debug_traceCall') {
         txHashOrCallObject = body.params;
       } else {
         txHashOrCallObject = res.result;
       }
 
       if (txHashOrCallObject) {
-        // TODO
-        // this was initially done in async.
-        // but this might kill the node for many and long running traces.
-        // Either use a priority queue (because of state pruning (128 blocks), we might not be able to trace a tx)
-        // or just simply block ;)
-        await this.doTraceWrapper(txHashOrCallObject);
+        this.jobs.push([method, txHashOrCallObject]);
       }
 
       resp.end(JSON.stringify(res));
@@ -124,30 +154,12 @@ export default class ArtifactProxy extends Artifacts {
     );
   }
 
-  async findContract (receipt) {
-    let to = receipt.to || receipt.contractAddress;
-
-    if (!to) {
-      return;
-    }
-
-    to = to.toLowerCase();
-    let contract = this.addrToContract[to];
-
-    if (contract) {
-      return contract;
-    }
-
-    const code = await this.fetch({ jsonrpc: '2.0', id: 42, method: 'eth_getCode', params: [to, 'latest'] });
-
-    if (!code.result || code.result === '0x') {
-      return;
-    }
-
+  async findContract (code, to) {
+    let contract;
     let len = this.artifacts.length;
     while (len--) {
       const tmp = this.artifacts[len];
-      if (tmp.deployedBytecode === code.result) {
+      if (tmp.deployedBytecode === code) {
         contract = tmp;
         break;
       }
@@ -162,11 +174,11 @@ export default class ArtifactProxy extends Artifacts {
         // some projects modify the bytecode
         const tmp = this.artifacts[len];
         const codeLen =
-          tmp.deployedBytecode.length > code.result.length ? code.result.length : tmp.deployedBytecode.length;
+          tmp.deployedBytecode.length > code.length ? code.length : tmp.deployedBytecode.length;
         let matches = 0;
 
         for (let i = 2; i < codeLen; i++) {
-          if (code.result[i] === tmp.deployedBytecode[i]) {
+          if (code[i] === tmp.deployedBytecode[i]) {
             matches++;
           }
         }
@@ -188,23 +200,18 @@ export default class ArtifactProxy extends Artifacts {
       }
     }
 
-    if (contract) {
-      this.addrToContract[to] = contract;
-    }
     return contract;
   }
 
   // https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/internal/tracers/call_tracer.js
-  async doTrace (txHashOrCallObject) {
+  async doTrace (method, txHashOrCallObject) {
     if (!txHashOrCallObject) {
       return;
     }
 
-    let receipt;
     let trace;
-
     if (typeof txHashOrCallObject === 'string') {
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 3000; i++) {
         const obj = await this.fetch(
           {
             jsonrpc: '2.0',
@@ -215,16 +222,10 @@ export default class ArtifactProxy extends Artifacts {
         );
 
         if (obj.result) {
-          receipt = obj.result;
           break;
         }
 
         await new Promise(function (resolve) { setTimeout(resolve, 30 ); });
-      }
-
-      if (!receipt.to) {
-        // ignoring deployment
-        return;
       }
 
       trace = await this.fetch(
@@ -236,49 +237,52 @@ export default class ArtifactProxy extends Artifacts {
         }
       );
     } else {
-      receipt = txHashOrCallObject[0];
-      const params = [...txHashOrCallObject];
+      let params = [...txHashOrCallObject];
       if (params.length < 2) {
         params.push('latest');
+      }
+      if (params.length > 2) {
+        const tracerConfig = Object.assign({}, TRACER);
+        const opt = params[2];
+        if (typeof opt === 'object') {
+          if (opt.stateOverrides || opt.blockOverrides) {
+            tracerConfig.stateOverrides = opt.stateOverrides || {};
+            tracerConfig.blockOverrides = opt.blockOverrides || {};
+          } else {
+            tracerConfig.stateOverrides = opt;
+          }
+        }
+        params = [params[0], params[1], tracerConfig];
+      } else {
+        params = [params[0], params[1], TRACER];
       }
       trace = await this.fetch(
         {
           jsonrpc: '2.0',
           id: 42,
           method: 'debug_traceCall',
-          params: [...params, TRACER],
+          params,
         }
       );
     }
 
     if (!trace.result) {
       process.stderr.write(
-        `***\ndevelatus-apparatus: Error getting trace\n${JSON.stringify({ trace, receipt }, null, 2)}\n***\n`
+        `***\ndevelatus-apparatus: Error getting trace\n${JSON.stringify({ method, txHashOrCallObject, trace }, null, 2)}\n***\n`
       );
       return;
     }
 
     const logs = trace.result;
     const len = logs.length;
-    const contracts = [null, await this.findContract(receipt)];
-    let currentDepth = 1;
-
+    let to;
+    let code;
     for (let i = 0; i < len; i++) {
       const log = logs[i];
       const pc = log.pc;
-      const depth = log.depth || currentDepth;
-
-      let contract = contracts[depth];
-
-      if (depth !== currentDepth) {
-        if (depth >= contracts.length) {
-          contract = await this.findContract({ to: log.target });
-          contracts[depth] = contract;
-        }
-        currentDepth = depth;
-        contract = contracts[depth];
-      }
-
+      to = log.target || to;
+      code = log.code || code;
+      const contract = await this.findContract(code, to);
       if (contract) {
         this.markLocation(contract, pc);
 
@@ -293,18 +297,9 @@ export default class ArtifactProxy extends Artifacts {
     }
   }
 
-  async doTraceWrapper (txHashOrCallObject) {
-    this.pendingTraces++;
-    try {
-      await this.doTrace(txHashOrCallObject);
-    } finally {
-      this.pendingTraces--;
-    }
-  }
-
   async finish () {
     while (true) {
-      if (this.pendingTraces === 0) {
+      if (this.jobs.length === 0) {
         break;
       }
       await new Promise(

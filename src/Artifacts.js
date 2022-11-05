@@ -1,33 +1,65 @@
 'use strict';
 
+import fs from 'fs';
+import { resolve as resolvePath } from 'path';
+
 export default class Artifacts {
-  constructor () {
+  constructor (config) {
+    this.config = config;
     this.artifacts = [];
     this.contractByFileId = {};
   }
 
-  add (artifact) {
+  add (artifact, filePath) {
     const obj = {};
 
     obj.name = artifact.contractName;
-    obj.deployedBytecode = artifact.deployedBytecode;
+    obj.deployedBytecode = artifact.deployedBytecode || ('0x' + artifact['bin-runtime']);
     obj.bytecode = Buffer.from(obj.deployedBytecode.replace('0x', ''), 'hex');
-    obj.deployedSourceMap = artifact.deployedSourceMap;
-    obj.ast = artifact.ast;
-    obj.source = artifact.source;
-    obj.fileName = artifact.ast.absolutePath;
-    obj.fileId = obj.ast.src.split(':')[2];
+    obj.deployedSourceMap = artifact.deployedSourceMap || artifact['srcmap-runtime'];
+
+    if (artifact.ast) {
+      obj.source = artifact.source;
+      obj.filePath = artifact.ast.absolutePath;
+      obj.fileId = artifact.ast.src.split(':')[2];
+    } else {
+      obj.source = fs.readFileSync(filePath).toString();
+      obj.filePath = filePath;
+      obj.fileId = obj.deployedSourceMap.split(':')[2];
+    }
 
     this.makeLineMap(obj);
-    // this.parseAst(obj);
-
     this.contractByFileId[obj.fileId] = obj;
     this.artifacts.push(obj);
   }
 
-  async prepare () {
-    let len = this.artifacts.length;
+  async reload () {
+    this.artifacts = [];
+    this.contractByFileId = {};
 
+    const path = resolvePath(this.config.artifactsPath);
+    const files = fs.readdirSync(path);
+
+    // XXX: we don't expect directories here, just json build artifacts.
+    while (files.length) {
+      const file = files.pop();
+      const artifact = JSON.parse(fs.readFileSync(resolvePath(`${path}/${file}`)));
+
+      if (artifact.contracts) {
+        // combined output?
+        for (const id in artifact.contracts) {
+          const obj = artifact.contracts[id];
+          const [filePath, contractName] = id.split(':');
+
+          obj.contractName = contractName;
+          this.add(obj, filePath);
+        }
+      } else {
+        this.add(artifact, path + file);
+      }
+    }
+
+    let len = this.artifacts.length;
     while (len--) {
       await this.parseSourceMap(this.artifacts[len]);
     }
@@ -71,39 +103,6 @@ export default class Artifacts {
 
     obj.numberOfLines = line - 1;
     obj.lineMap = lineMap;
-  }
-
-  parseAst (obj) {
-    // TODO: kind of hacky at the moment.
-    // Do it properly 🙃
-    let nodes = [].concat(obj.ast.nodes);
-
-    while (nodes.length) {
-      const node = nodes.pop();
-
-      if (typeof node !== 'object') {
-        continue;
-      }
-
-      if (node.src) {
-        obj.nodes[node.src] = node;
-      }
-      // TODO: handle this
-      // if (obj.nodes[node.src]) {
-      // }
-
-      for (const k in node) {
-        const f = node[k];
-
-        if (Array.isArray(f)) {
-          nodes = nodes.concat(f);
-        } else {
-          if (f) {
-            nodes.push(f);
-          }
-        }
-      }
-    }
   }
 
   parseSourceMap (obj) {

@@ -1,0 +1,28 @@
+name: Docker
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        DOCKERFILE: ['docker/develatus-apparatus/Dockerfile']
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Login to ghcr.io
+        env:
+          PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: printf "$PAT" | docker login --username _ --password-stdin ghcr.io
+
+      - name: Build and push Docker images
+        env:
+          DOCKERFILE: ${{ matrix.DOCKERFILE }}
+          PLATFORM: 'linux/amd64,linux/arm64'
+        run: ./.github/workflows/docker.sh

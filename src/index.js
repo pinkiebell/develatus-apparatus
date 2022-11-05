@@ -5,121 +5,48 @@ import { resolve as resolvePath } from 'path';
 import { spawn } from 'child_process';
 
 import ArtifactProxy from './ArtifactProxy.js';
+import computeCoverage from './coverage.js';
 
 function onException (e) {
   process.stderr.write(`${e.stack || e}\n`);
   process.exit(1);
 }
 
-function computeCoverage (artifacts, config) {
-  const coverage = {
-    coverage: {
-    },
-  };
-  const contracts = artifacts.artifacts;
-  // http://ltp.sourceforge.net/coverage/lcov/geninfo.1.php
-  let lcov = '';
-
-  for (let i = 0; i < contracts.length; i++) {
-    const contract = contracts[i];
-    let path = contract.fileName;
-
-    if (!fs.existsSync(path)) {
-      const maybeMatch = 'node_modules/' + path;
-
-      if (fs.existsSync(path)) {
-        path = maybeMatch;
-      }
-    }
-
-    if (config.ignore && path.match(config.ignore)) {
-      process.stdout.write(`ignoring ${path}\n`);
-      continue;
-    }
-
-    const cover = {};
-    let hits = 0;
-    let miss = 0;
-
-    lcov += `SF:${path}\n`;
-    for (let key in contract.lineMap) {
-      const val = contract.lineMap[key];
-      const ignore = (val.hit === 0 && val.miss === 0);
-      const green = (val.hit > 0);
-
-      if (green) {
-        if (!cover[val.line]) {
-          if (cover[val.line] === 0) {
-            miss -= 1;
-          }
-          cover[val.line] = 1;
-          hits += 1;
-          lcov += `DA:${val.line},${val.hit}\n`;
-        }
-      } else if (ignore) {
-        // ignoring for now
-      } else {
-        if (cover[val.line] === undefined) {
-          cover[val.line] = 0;
-          lcov += `DA:${val.line},0\n`;
-          miss += 1;
-        }
-      }
-    }
-    coverage.coverage[path] = cover;
-    lcov += `LH:${hits}\nLF:${hits + miss}\nend_of_record\n`;
-
-    const totalLines = contract.numberOfLines;
-    const covered = ((totalLines - miss) / totalLines) * 100;
-
-    process.stdout.write(
-      `Coverage for ${contract.name}:\n` +
-      `  hits: ${hits}\n` +
-      `  miss: ${miss}\n` +
-      `  total lines: ${totalLines}\n` +
-      `  coverage: ${covered.toPrecision(4)}\n`
-    );
-  }
-
-  const path = resolvePath('./coverage-report.json');
-  const lcovPath = resolvePath('./coverage-report.lcov');
-
-  fs.writeFileSync(path, JSON.stringify(coverage));
-  fs.writeFileSync(lcovPath, lcov);
-  process.stdout.write(`Written to ${path}, ${lcovPath}\n`);
+function onSignal () {
+  process.exit(0);
 }
 
 (async function () {
   process.on('uncaughtException', onException);
   process.on('unhandledRejection', onException);
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
 
-  const config = (await import(resolvePath('.develatus-apparatus.js'))).default;
-  const path = resolvePath(config.artifactsPath);
+  const config = (await import(resolvePath('.develatus-apparatus.mjs'))).default;
   const artifacts = new ArtifactProxy(config);
-  const files = fs.readdirSync(path);
 
-  // XXX: we don't expect directories here, just json build artifacts.
-  while (files.length) {
-    const file = files.pop();
-    const artifact = JSON.parse(fs.readFileSync(resolvePath(`${path}/${file}`)));
+  if (config.testCommand) {
+    await artifacts.reload();
 
-    artifacts.add(artifact);
+    const exitCode = await new Promise(
+      function (resolve, reject) {
+        const opts = { shell: true, stdio: ['inherit', 'inherit', 'inherit'] };
+        const proc = spawn(config.testCommand, opts);
+
+        proc.on('exit', function (exitCode) {
+          resolve(exitCode);
+        });
+      }
+    );
+
+    await artifacts.finish();
+    const { json, lcov } = computeCoverage(artifacts, config);
+    const path = resolvePath('./coverage-report.json');
+    const lcovPath = resolvePath('./coverage-report.lcov');
+
+    fs.writeFileSync(path, JSON.stringify(json));
+    fs.writeFileSync(lcovPath, lcov);
+    process.stdout.write(`Written to ${path}, ${lcovPath}\n`);
+    process.exit(exitCode);
   }
-
-  await artifacts.prepare();
-
-  const exitCode = await new Promise(
-    function (resolve, reject) {
-      const opts = { shell: true, stdio: ['inherit', 'inherit', 'inherit'] };
-      const proc = spawn(config.testCommand, opts);
-
-      proc.on('exit', function (exitCode) {
-        resolve(exitCode);
-      });
-    }
-  );
-
-  await artifacts.finish();
-  computeCoverage(artifacts, config);
-  process.exit(exitCode);
 })();
