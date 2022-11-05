@@ -8,13 +8,15 @@ if [ -z "$tag" ]; then
   tag='latest'
 fi
 
-docker buildx create --bootstrap --name mybuilder --platform $PLATFORM --use || echo 'skip'
+BUILDER=mybuilder
+docker buildx create --bootstrap --name $BUILDER --platform $PLATFORM --use || echo 'skip'
 
 path=$(dirname $DOCKERFILE)
 ext=${path##*/}
 image="ghcr.io/$GITHUB_REPOSITORY/$ext"
 
 docker buildx build \
+  --builder $BUILDER \
   --cache-from "type=local,src=$RUNNER_TEMP/docker-cache" \
   --cache-to "type=local,dest=$RUNNER_TEMP/docker-cache-new" \
   --push \
