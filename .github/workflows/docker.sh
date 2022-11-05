@@ -12,8 +12,7 @@ BUILDER=mybuilder
 docker buildx create --bootstrap --name $BUILDER --platform $PLATFORM --use
 
 path=$(dirname $DOCKERFILE)
-ext=${path##*/}
-image="ghcr.io/$GITHUB_REPOSITORY/$ext"
+image="ghcr.io/$GITHUB_REPOSITORY"
 
 docker buildx build \
   --builder $BUILDER \
