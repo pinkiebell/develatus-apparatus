@@ -8,7 +8,7 @@ if [ -z "$tag" ]; then
   tag='latest'
 fi
 
-docker buildx create --name mybuilder --use || echo 'skip'
+docker buildx create --name mybuilder --platform $PLATFORM --use || echo 'skip'
 docker buildx inspect --bootstrap
 
 path=$(dirname $DOCKERFILE)
