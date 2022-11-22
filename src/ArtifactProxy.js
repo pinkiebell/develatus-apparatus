@@ -6,31 +6,54 @@ import { parse as urlParse } from 'url';
 
 import Artifacts from './Artifacts.js';
 import computeCoverage from './coverage.js';
+import logOnce from './log.js';
 
 const TRACER = {
   timeout: '1200s',
   tracer:
 `
 {
-   data: [],
+   depth: 0,
+   code: null,
+   targets: [],
+   data: {},
    fault: function() {
    },
    step: function(log, db) {
-     var pc = log.getPC();
      var depth = log.getDepth();
-     var obj = { pc };
+     if (depth == 0) {
+       throw new Error('depth == 0');
+     }
      var op = log.op.toNumber();
+     // CALL CALLCODE DELEGATECALL STATICCALL
      if (op === 0xf1 || op === 0xf2 || op === 0xf4 || op === 0xfa) {
-       this.target = toAddress(log.stack.peek(1).toString(16));
+       var target = toAddress(log.stack.peek(1).toString(16));
+       this.targets[depth + 1] = target;
+     } else {
+       // ignore everything else; CREATE
+       this.targets[depth + 1] = null;
      }
      if (depth !== this.depth) {
        this.depth = depth;
-       obj.depth = depth;
-       obj.target = toHex(this.target || log.contract.getAddress());
-       obj.code = toHex(db.getCode(this.target || log.contract.getAddress()));
+       if (depth === 1) {
+         // root
+         this.targets[depth] = log.contract.getAddress();
+       }
+
+       var target = this.targets[depth];
+       if (target != null) {
+         this.code = toHex(db.getCode(target));
+       } else {
+         this.code = null;
+       }
      }
 
-     this.data.push(obj);
+     if (this.code != null) {
+       var obj = this.data[this.code] || {};
+       var pc = log.getPC();
+       obj[pc] = (obj[pc] || 0) + 1;
+       this.data[this.code] = obj;
+     }
    },
    result: function() { return this.data; }
 }`,
@@ -42,7 +65,6 @@ export default class ArtifactProxy extends Artifacts {
 
     this.fuzzyMatchFactor = options.fuzzyMatchFactor || 0.7;
     this.jobs = [];
-    this.logged = {};
 
     this.fetchOptions = urlParse(options.rpcUrl);
     this.fetchOptions.method = 'POST';
@@ -173,7 +195,7 @@ export default class ArtifactProxy extends Artifacts {
     );
   }
 
-  async findContract (code, to) {
+  async findContract (code) {
     let contract;
     let len = this.artifacts.length;
     while (len--) {
@@ -209,12 +231,12 @@ export default class ArtifactProxy extends Artifacts {
       }
 
       if (contract) {
-        this.logOnce(
-          `***develatus-apparatus: (Warning) Fuzzy-matched contract at ${to} as ${contract.name}***\n`
+        logOnce(
+          `***develatus-apparatus: (Warning) Fuzzy-matched contract with bytecode ${code} as ${contract.name}***\n`
         );
       } else {
-        this.logOnce(
-          `***develatus-apparatus: (Warning) No artifact found for contract at ${to}***\n`
+        logOnce(
+          `***develatus-apparatus: (Warning) No artifact found for contract with bytecode ${code}***\n`
         );
       }
     }
@@ -292,17 +314,15 @@ export default class ArtifactProxy extends Artifacts {
       return;
     }
 
-    const logs = trace.result;
-    const len = logs.length;
-    let to;
-    let code;
-    for (let i = 0; i < len; i++) {
-      const log = logs[i];
-      const pc = log.pc;
-      to = log.target || to;
-      code = log.code || code;
-      const contract = await this.findContract(code, to);
-      if (contract) {
+    const traceResult = trace.result;
+    for (const code in traceResult) {
+      const contract = await this.findContract(code);
+      if (!contract) {
+        continue;
+      }
+
+      for (const p in traceResult[code]) {
+        const pc = Number(p);
         this.markLocation(contract, pc);
 
         const op = contract.bytecode[pc];
@@ -329,12 +349,5 @@ export default class ArtifactProxy extends Artifacts {
     }
 
     this.finalize();
-  }
-
-  logOnce (str) {
-    if (!this.logged[str]) {
-      process.stderr.write(str);
-      this.logged[str] = true;
-    }
   }
 };
