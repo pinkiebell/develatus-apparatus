@@ -74,14 +74,22 @@ export default class ArtifactProxy extends Artifacts {
     server.timeout = 0;
     server.keepAliveTimeout = 0;
     server.listen(options.proxyPort);
-    setInterval(this.dutyCycle.bind(this), 30);
+    this.dutyCycle();
   }
 
   async dutyCycle () {
-    const job = this.jobs.shift();
-    if (job) {
-      await this.doTrace(...job);
+    if (this.jobs.length) {
+      const job = this.jobs[0];
+      try {
+        await this.doTrace(...job);
+      } catch (err) {
+        process.stderr.write(
+          `***\ndevelatus-apparatus: ${err} for ${JSON.stringify(job)}***\n`
+        );
+      }
+      this.jobs.shift();
     }
+    setTimeout(this.dutyCycle.bind(this), 100);
   }
 
   async onRequest (req, resp) {
