@@ -71,7 +71,7 @@ export default class ArtifactProxy extends Artifacts {
     this.fetchOptions.headers = { 'Content-Type': 'application/json' };
 
     const server = new http.Server(this.onRequest.bind(this));
-    //server.timeout = 90000;
+    server.timeout = 0;
     server.keepAliveTimeout = 0;
     server.listen(options.proxyPort);
     setInterval(this.dutyCycle.bind(this), 30);
