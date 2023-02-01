@@ -43,19 +43,24 @@ export default class Artifacts {
     // XXX: we don't expect directories here, just json build artifacts.
     while (files.length) {
       const file = files.pop();
-      const artifact = JSON.parse(fs.readFileSync(resolvePath(`${path}/${file}`)));
+      try {
+        const resolvedPath = resolvePath(`${path}/${file}`);
+        const artifact = JSON.parse(fs.readFileSync(resolvedPath));
 
-      if (artifact.contracts) {
-        // combined output?
-        for (const id in artifact.contracts) {
-          const obj = artifact.contracts[id];
-          const [filePath, contractName] = id.split(':');
+        if (artifact.contracts) {
+          // combined output?
+          for (const id in artifact.contracts) {
+            const obj = artifact.contracts[id];
+            const [filePath, contractName] = id.split(':');
 
-          obj.contractName = contractName;
-          this.add(obj, filePath);
+            obj.contractName = contractName;
+            this.add(obj, filePath);
+          }
+        } else {
+          this.add(artifact, resolvedPath);
         }
-      } else {
-        this.add(artifact, path + file);
+      } catch (err) {
+        console.error(`Error: reading ${file}\n${err}`);
       }
     }
 
